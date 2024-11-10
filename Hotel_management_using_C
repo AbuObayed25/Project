@@ -1,0 +1,264 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_ROOMS 100
+
+// Abu Obayed
+struct Room {
+    int roomNumber;
+    char roomType[20];
+    int isOccupied;
+};
+
+// Guest structure
+struct Guest {
+    int guestID;
+    char name[50];
+    char contact[15];
+    int roomNumber;
+};
+
+// Guest Node for Linked List
+struct GuestNode {
+    struct Guest guest;
+    struct GuestNode *next;
+};
+
+// Queue Node for Waiting List
+struct WaitingGuestQueue {
+    struct Guest guest;
+    struct WaitingGuestQueue *next;
+};
+
+// Activity Log Stack Node
+struct ActivityLogStack {
+    char activity[100];
+    struct ActivityLogStack *next;
+};
+
+// Global Variables
+struct Room rooms[MAX_ROOMS];
+struct GuestNode *guestListHead = NULL;
+struct WaitingGuestQueue *waitingQueueHead = NULL, *waitingQueueTail = NULL;
+struct ActivityLogStack *activityLogTop = NULL;
+
+// Function Prototypes
+void initializeRooms();
+void addRoom(int roomNumber, const char *roomType);
+void displayRooms();
+void checkIn();
+void checkOut();
+void addGuestToList(struct Guest guest);
+void removeGuestFromList(int roomNumber);
+struct Guest* findGuestByRoom(int roomNumber);
+void addToWaitingQueue(struct Guest guest);
+struct Guest removeFromWaitingQueue();
+void logActivity(const char *activity);
+void displayRecentActivities();
+
+// Main Program
+int main() {
+    initializeRooms();
+    int choice;
+
+    while (1) {
+        printf("\nHotel Management System\n");
+        printf("1. Display Rooms\n");
+        printf("2. Check-In\n");
+        printf("3. Check-Out\n");
+        printf("4. View Recent Activities\n");
+        printf("5. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1: displayRooms(); break;
+            case 2: checkIn(); break;
+            case 3: checkOut(); break;
+            case 4: displayRecentActivities(); break;
+            case 5: exit(0); break;
+            default: printf("Invalid choice. Try again.\n");
+        }
+    }
+    return 0;
+}
+
+// Initialize rooms array with default values
+void initializeRooms() {
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        rooms[i].roomNumber = i + 1;
+        strcpy(rooms[i].roomType, (i % 2 == 0) ? "Single" : "Double");
+        rooms[i].isOccupied = 0;
+    }
+}
+
+// Display all rooms and their statuses
+void displayRooms() {
+    printf("\nRoom Status:\n");
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        printf("Room %d (%s) - %s\n", rooms[i].roomNumber, rooms[i].roomType,
+               rooms[i].isOccupied ? "Occupied" : "Available");
+    }
+}
+
+// Check in a guest
+void checkIn() {
+    struct Guest guest;
+    int foundRoom = -1;
+
+    printf("Enter Guest ID: ");
+    scanf("%d", &guest.guestID);
+    printf("Enter Guest Name: ");
+    scanf(" %[^\n]", guest.name);
+    printf("Enter Contact Number: ");
+    scanf("%s", guest.contact);
+
+    // Find available room
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        if (!rooms[i].isOccupied) {
+            foundRoom = i;
+            break;
+        }
+    }
+
+    if (foundRoom == -1) {
+        printf("No available rooms. Adding guest to waiting list.\n");
+        addToWaitingQueue(guest);
+        return;
+    }
+
+    // Book the room
+    rooms[foundRoom].isOccupied = 1;
+    guest.roomNumber = rooms[foundRoom].roomNumber;
+    addGuestToList(guest);
+
+    // Log activity
+    char activity[100];
+    sprintf(activity, "Check-In: Guest %d in Room %d", guest.guestID, guest.roomNumber);
+    logActivity(activity);
+
+    printf("Guest checked into Room %d.\n", guest.roomNumber);
+}
+
+// Check out a guest
+void checkOut() {
+    int roomNumber;
+    printf("Enter Room Number for Check-Out: ");
+    scanf("%d", &roomNumber);
+
+    struct Guest *guest = findGuestByRoom(roomNumber);
+    if (guest == NULL) {
+        printf("Room %d is not occupied.\n", roomNumber);
+        return;
+    }
+
+    // Free the room
+    rooms[roomNumber - 1].isOccupied = 0;
+    removeGuestFromList(roomNumber);
+
+    // Log activity
+    char activity[100];
+    sprintf(activity, "Check-Out: Room %d", roomNumber);
+    logActivity(activity);
+
+    // Assign room to waiting guest if available
+    if (waitingQueueHead != NULL) {
+        struct Guest waitingGuest = removeFromWaitingQueue();
+        waitingGuest.roomNumber = roomNumber;
+        rooms[roomNumber - 1].isOccupied = 1;
+        addGuestToList(waitingGuest);
+        printf("Guest from waiting list checked into Room %d.\n", roomNumber);
+
+        sprintf(activity, "Check-In from Waiting List: Guest %d in Room %d", waitingGuest.guestID, roomNumber);
+        logActivity(activity);
+    } else {
+        printf("Room %d is now available.\n", roomNumber);
+    }
+}
+
+// Add guest to the guest list
+void addGuestToList(struct Guest guest) {
+    struct GuestNode *newNode = (struct GuestNode*)malloc(sizeof(struct GuestNode));
+    newNode->guest = guest;
+    newNode->next = guestListHead;
+    guestListHead = newNode;
+}
+
+// Remove guest from the guest list by room number
+void removeGuestFromList(int roomNumber) {
+    struct GuestNode *current = guestListHead, *prev = NULL;
+
+    while (current != NULL && current->guest.roomNumber != roomNumber) {
+        prev = current;
+        current = current->next;
+    }
+
+    if (current == NULL) return; // Guest not found
+
+    if (prev == NULL) guestListHead = current->next;
+    else prev->next = current->next;
+
+    free(current);
+}
+
+// Find guest by room number
+struct Guest* findGuestByRoom(int roomNumber) {
+    struct GuestNode *current = guestListHead;
+    while (current != NULL) {
+        if (current->guest.roomNumber == roomNumber)
+            return &current->guest;
+        current = current->next;
+    }
+    return NULL;
+}
+
+// Add guest to the waiting queue
+void addToWaitingQueue(struct Guest guest) {
+    struct WaitingGuestQueue *newNode = (struct WaitingGuestQueue*)malloc(sizeof(struct WaitingGuestQueue));
+    newNode->guest = guest;
+    newNode->next = NULL;
+
+    if (waitingQueueTail == NULL) waitingQueueHead = waitingQueueTail = newNode;
+    else {
+        waitingQueueTail->next = newNode;
+        waitingQueueTail = newNode;
+    }
+    printf("Guest added to waiting list.\n");
+}
+
+// Remove and return guest from the waiting queue
+struct Guest removeFromWaitingQueue() {
+    struct WaitingGuestQueue *temp = waitingQueueHead;
+    struct Guest guest = temp->guest;
+
+    waitingQueueHead = waitingQueueHead->next;
+    if (waitingQueueHead == NULL) waitingQueueTail = NULL;
+
+    free(temp);
+    return guest;
+}
+
+// Log activity in the activity log stack
+void logActivity(const char *activity) {
+    struct ActivityLogStack *newNode = (struct ActivityLogStack*)malloc(sizeof(struct ActivityLogStack));
+    strcpy(newNode->activity, activity);
+    newNode->next = activityLogTop;
+    activityLogTop = newNode;
+}
+
+// Display recent activities
+void displayRecentActivities() {
+    struct ActivityLogStack *current = activityLogTop;
+
+    if (current == NULL) {
+        printf("No recent activities.\n");
+        return;
+    }
+
+    printf("\nRecent Activities:\n");
+    while (current != NULL) {
+        printf("%s\n", current->activity);
+        current = current->next;
+    }
+}
